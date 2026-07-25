@@ -10,24 +10,43 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.BaselineShift
@@ -36,6 +55,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.ckck.android.BuildConfig
+import com.ckck.android.api.NominatimPlace
+import com.ckck.android.viewmodels.MainUiState
 import com.ckck.android.viewmodels.MainViewModel
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
@@ -51,18 +72,40 @@ fun MainScreen(
     modifier: Modifier = Modifier,
     mainViewModel: MainViewModel = hiltViewModel(),
 ) {
+    val uiState by mainViewModel.uiState.collectAsState()
+    val permissionHandler = rememberPermissionHandler(mainViewModel)
+
+    AlertDialogWrapper(
+        visible = uiState.permissionErrorMessage != null,
+        onDismiss = { mainViewModel.clearPermissionAlert() },
+        title = "Permission Required",
+        content = { Text("Please enable ${uiState.permissionErrorMessage} to continue.") },
+        actions = {
+            FilledTonalButton(
+                onClick = {
+                    mainViewModel.clearPermissionAlert()
+                }
+            ) {
+                Text("Dismiss")
+            }
+        }
+    )
     Scaffold(
         modifier = modifier,
     ) { innerPadding ->
         Box(
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(
+                top = innerPadding.calculateTopPadding(),
+                start = innerPadding.calculateStartPadding(LocalLayoutDirection.current),
+                end = innerPadding.calculateEndPadding(LocalLayoutDirection.current)
+            )
         ) {
             LazyColumn {
                 item {
                     PinnedStations()
                 }
                 item {
-                    NavigationManager()
+                    NavigationManager(mainViewModel, permissionHandler)
                 }
                 item {
                     FavoriteLocations()
@@ -73,6 +116,9 @@ fun MainScreen(
                     ) {
                         Map()
                     }
+                }
+                item {
+                    Spacer(Modifier.height(innerPadding.calculateBottomPadding()))
                 }
             }
         }
@@ -135,6 +181,7 @@ fun PinnedStations() {
             Card(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
+                    .fillMaxWidth()
             ) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -190,21 +237,128 @@ data class StationDemo(
 )
 
 @Composable
-fun NavigationManager() {
-    Column {
+fun NavigationManager(
+    viewModel: MainViewModel = hiltViewModel(),
+    permissionHandler: PermissionHandler
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    NavigationManagerContent(
+        uiState = uiState,
+        onFromQueryChanged = viewModel::onFromQueryChanged,
+        onToQueryChanged = viewModel::onToQueryChanged,
+        onFromPlaceSelected = viewModel::onFromPlaceSelected,
+        onToPlaceSelected = viewModel::onToPlaceSelected,
+        onGetCurrentLocationClick = { permissionHandler.requestPermission() }
+    )
+}
+
+@Composable
+fun NavigationManagerContent(
+    //TODO: Allow inputting long/lat manually
+    uiState: MainUiState,
+    onFromQueryChanged: (String) -> Unit,
+    onToQueryChanged: (String) -> Unit,
+    onFromPlaceSelected: (NominatimPlace) -> Unit,
+    onToPlaceSelected: (NominatimPlace) -> Unit,
+    onGetCurrentLocationClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Text("Navigate")
-        TextField(
-            state = rememberTextFieldState(),
-            label = { Text("From") }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            LocationSearchField(
+                label = "From",
+                query = uiState.fromQuery,
+                results = uiState.fromResults,
+                onQueryChange = onFromQueryChanged,
+                onPlaceSelected = onFromPlaceSelected,
+                onDismissRequest = { },
+                modifier = Modifier.weight(1f)
+            )
+            IconToggleButton(
+                checked = uiState.loadingCurrentLocation,
+                onCheckedChange = { onGetCurrentLocationClick() },
+                shapes = IconButtonDefaults.toggleableShapes(),
+                enabled = !uiState.loadingCurrentLocation && uiState.canGetLocation
+            ) {
+                if (uiState.loadingCurrentLocation) {
+                    LoadingIndicator(modifier = Modifier.fillMaxSize())
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.MyLocation,
+                        contentDescription = "Current Location"
+                    )
+                }
+            }
+        }
+
+        LocationSearchField(
+            label = "To",
+            query = uiState.toQuery,
+            results = uiState.toResults,
+            onQueryChange = onToQueryChanged,
+            onPlaceSelected = onToPlaceSelected,
+            onDismissRequest = { }
         )
-        TextField(
-            state = rememberTextFieldState(),
-            label = { Text("To") }
-        )
+
         Button(
             onClick = { },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = uiState.fromLocation != null && uiState.toLocation != null,
             content = { Text("Go") }
         )
+    }
+}
+
+@Composable
+fun LocationSearchField(
+    label: String,
+    query: String,
+    results: List<NominatimPlace>,
+    onQueryChange: (String) -> Unit,
+    onPlaceSelected: (NominatimPlace) -> Unit,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    ExposedDropdownMenuBox(
+        expanded = results.isNotEmpty(),
+        onExpandedChange = { },
+        modifier = modifier
+    ) {
+        TextField(
+            value = query,
+            onValueChange = {
+                onQueryChange(it)
+            },
+            label = { Text(label) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(type = ExposedDropdownMenuAnchorType.PrimaryEditable),
+            colors = ExposedDropdownMenuDefaults.textFieldColors(),
+        )
+
+        if (results.isNotEmpty()) {
+            ExposedDropdownMenu(
+                expanded = true,
+                onDismissRequest = onDismissRequest
+            ) {
+                results.forEach { place ->
+                    DropdownMenuItem(
+                        text = { Text(place.displayName) },
+                        onClick = {
+                            onPlaceSelected(place)
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -255,7 +409,14 @@ fun Map() {
 fun MainPagePreview() {
     Column {
         PinnedStations()
-        NavigationManager()
+        NavigationManagerContent(
+            uiState = MainUiState(),
+            onFromQueryChanged = {},
+            onToQueryChanged = {},
+            onFromPlaceSelected = {},
+            onToPlaceSelected = {},
+            onGetCurrentLocationClick = {}
+        )
         FavoriteLocations()
     }
 }
