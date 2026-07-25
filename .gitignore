@@ -30,6 +30,7 @@ build/
 
 # Secrets
 secrets.properties
+.env
 
 # OS-specific
 Thumbs.db

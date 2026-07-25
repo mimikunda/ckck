@@ -35,6 +35,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.ckck.android.BuildConfig
 import com.ckck.android.viewmodels.MainViewModel
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
@@ -230,11 +231,11 @@ fun FavoriteLocations() {
 
 @Composable
 fun Map() {
-    val protomapsApiKey = "//"
+    val protomapsApiKey = BuildConfig.PROTOMAPS_API_KEY
 
     val cameraState = rememberCameraState(
         firstPosition = CameraPosition(
-            target = Position(longitude = 14.505999, latitude = 46.051366), // London
+            target = Position(longitude = 14.505999, latitude = 46.051366),
             zoom = 10.0
         )
     )
