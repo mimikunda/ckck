@@ -30,8 +30,13 @@ data class MainUiState(
     val toLocation: NominatimPlace? = null,
     val loadingCurrentLocation: Boolean = false,
     val canGetLocation: Boolean = true,
-    val permissionErrorMessage: String? = null
+    val permissionErrorMessage: String? = null,
+    val currentTab: MainTab = MainTab.Map
 )
+
+enum class MainTab {
+    Map, Stations, Navigate
+}
 
 @OptIn(FlowPreview::class)
 @HiltViewModel
@@ -147,5 +152,9 @@ class MainViewModel @Inject constructor(
 
     fun clearPermissionAlert() {
         _uiState.update { it.copy(permissionErrorMessage = null) }
+    }
+
+    fun onTabSelected(tab: MainTab) {
+        _uiState.update { it.copy(currentTab = tab) }
     }
 }
