@@ -2,8 +2,8 @@ package com.ckck.android.mainui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,9 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -28,12 +27,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.ckck.android.viewmodels.MainTab
+import com.ckck.android.models.HomeTab
 
 @Composable
 fun FloatingPillNavbar(
-    selectedTab: MainTab,
-    onTabSelected: (MainTab) -> Unit,
+    selectedTab: HomeTab,
+    onTabSelected: (HomeTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -48,9 +47,8 @@ fun FloatingPillNavbar(
             // Sliding Highlight
             val highlightOffset by animateDpAsState(
                 targetValue = when (selectedTab) {
-                    MainTab.Map -> 0.dp
-                    MainTab.Stations -> 56.dp // Item size (48) + Spacing (8)
-                    MainTab.Navigate -> 112.dp // (Item size + Spacing) * 2
+                    HomeTab.Home -> 0.dp
+                    HomeTab.Map -> 56.dp // Item size (48) + Spacing (8)
                 },
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
@@ -71,19 +69,14 @@ fun FloatingPillNavbar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 NavbarItem(
+                    icon = Icons.Default.Home,
+                    selected = selectedTab == HomeTab.Home,
+                    onClick = { onTabSelected(HomeTab.Home) }
+                )
+                NavbarItem(
                     icon = Icons.Default.Map,
-                    selected = selectedTab == MainTab.Map,
-                    onClick = { onTabSelected(MainTab.Map) }
-                )
-                NavbarItem(
-                    icon = Icons.Default.DirectionsBus,
-                    selected = selectedTab == MainTab.Stations,
-                    onClick = { onTabSelected(MainTab.Stations) }
-                )
-                NavbarItem(
-                    icon = Icons.Default.Navigation,
-                    selected = selectedTab == MainTab.Navigate,
-                    onClick = { onTabSelected(MainTab.Navigate) }
+                    selected = selectedTab == HomeTab.Map,
+                    onClick = { onTabSelected(HomeTab.Map) }
                 )
             }
         }

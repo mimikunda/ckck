@@ -9,32 +9,30 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
@@ -44,13 +42,11 @@ import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LoadingIndicator
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -59,20 +55,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.BaselineShift
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.ckck.android.BuildConfig
 import com.ckck.android.R
 import com.ckck.android.api.NominatimPlace
+import com.ckck.android.api.StopTime
+import com.ckck.android.models.HomeTab
+import com.ckck.android.utils.TimeUtils
+import com.ckck.android.viewmodels.HomeUiState
+import com.ckck.android.viewmodels.HomeViewModel
 import com.ckck.android.viewmodels.LocationError
-import com.ckck.android.viewmodels.MainTab
-import com.ckck.android.viewmodels.MainUiState
-import com.ckck.android.viewmodels.MainViewModel
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
 import org.maplibre.compose.map.MapOptions
@@ -83,16 +79,63 @@ import org.maplibre.compose.style.rememberStyleState
 import org.maplibre.spatialk.geojson.Position
 
 @Composable
-fun MainScreen(
-    modifier: Modifier = Modifier,
-    mainViewModel: MainViewModel = hiltViewModel(),
-    onStationClick: (String, String) -> Unit = { _, _ -> },
-    onNavigateClick: (String, String) -> Unit = { _, _ -> },
-    onSettingsClick: () -> Unit = {},
-    onFavoritesClick: () -> Unit = {},
+fun HomeScreen(
+    currentTab: HomeTab,
+    onTabSelected: (HomeTab) -> Unit,
+    onStationClick: (String, String) -> Unit,
+    onNavigateClick: (String, String) -> Unit,
+    onFavoritesClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val uiState by mainViewModel.uiState.collectAsState()
-    val permissionHandler = rememberPermissionHandler(mainViewModel)
+    Box(modifier = modifier.fillMaxSize()) {
+        AnimatedContent(
+            targetState = currentTab,
+            transitionSpec = {
+                fadeIn(tween(300)) togetherWith fadeOut(tween(300))
+            },
+            label = "TabTransition"
+        ) { tab ->
+            when (tab) {
+                HomeTab.Home -> {
+                    HomePage(
+                        onStationClick = onStationClick,
+                        onNavigateClick = onNavigateClick,
+                        onFavoritesClick = onFavoritesClick,
+                        onSettingsClick = onSettingsClick
+                    )
+                }
+
+                HomeTab.Map -> {
+                    MapPage()
+                }
+            }
+        }
+
+        FloatingPillNavbar(
+            selectedTab = currentTab,
+            onTabSelected = onTabSelected,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(
+                    bottom = WindowInsets.navigationBars
+                        .asPaddingValues()
+                        .calculateBottomPadding()
+                )
+        )
+    }
+}
+
+@Composable
+fun HomePage(
+    homeViewModel: HomeViewModel = hiltViewModel(),
+    onStationClick: (String, String) -> Unit,
+    onNavigateClick: (String, String) -> Unit,
+    onFavoritesClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+) {
+    val uiState by homeViewModel.uiState.collectAsState()
+    val permissionHandler = rememberPermissionHandler(homeViewModel)
 
     uiState.locationError?.let { error ->
         data class DialogConfig(
@@ -107,26 +150,26 @@ fun MainScreen(
                 stringResource(R.string.permission_required_title),
                 stringResource(R.string.permission_required_desc),
                 stringResource(R.string.action_enable),
-                { permissionHandler.requestPermission() }
+                onConfirm = { permissionHandler.requestPermission() }
             )
 
             LocationError.PermanentlyDenied -> DialogConfig(
                 stringResource(R.string.permission_denied_title),
                 stringResource(R.string.permission_denied_desc),
                 stringResource(R.string.action_settings),
-                { permissionHandler.openAppSettings() }
+                onConfirm = { permissionHandler.openAppSettings() }
             )
 
             LocationError.LocationDisabled -> DialogConfig(
                 stringResource(R.string.location_disabled_title),
                 stringResource(R.string.location_disabled_desc),
                 stringResource(R.string.action_enable),
-                { permissionHandler.openLocationSettings() }
+                onConfirm = { permissionHandler.openLocationSettings() }
             )
         }
 
         CommonDialog(
-            onDismissRequest = { mainViewModel.clearPermissionAlert() },
+            onDismissRequest = { homeViewModel.clearPermissionAlert() },
             title = config.title,
             text = config.text,
             confirmButtonText = config.confirmText,
@@ -134,118 +177,68 @@ fun MainScreen(
         )
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        // Fullscreen Map Background
-        Map(modifier = Modifier.fillMaxSize())
-
-        // Top Actions (Settings)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(WindowInsets.statusBars.asPaddingValues())
-                .padding(16.dp),
-            contentAlignment = Alignment.TopEnd
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                tonalElevation = 4.dp
-            ) {
-                IconButton(onClick = onSettingsClick) {
-                    Icon(
-                        Icons.Filled.Settings,
-                        contentDescription = stringResource(R.string.desc_settings)
-                    )
-                }
-            }
-        }
-
-        // Overlay Content based on Tab
-        AnimatedContent(
-            targetState = uiState.currentTab,
-            transitionSpec = {
-                (fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 2 }) togetherWith
-                        (fadeOut(tween(200)) + slideOutVertically(tween(200)) { it / 2 })
-            },
-            label = "TabContentTransition",
-            modifier = Modifier.fillMaxSize()
-        ) { tab ->
-            when (tab) {
-                MainTab.Map -> {
-                    // Just the map (nothing to overlay here, or maybe a search bar)
-                    Box(modifier = Modifier.fillMaxSize())
-                }
-
-                MainTab.Stations -> {
-                    OverlayCard {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(bottom = 100.dp) // Space for navbar
-                        ) {
-                            item {
-                                PinnedStations(
-                                    stations = uiState.pinnedStations,
-                                    isLoading = uiState.isLoadingStations,
-                                    onStationClick = onStationClick
-                                )
-                            }
-                            item {
-                                FavoriteLocations(onFavoriteClick = onFavoritesClick)
-                            }
-                        }
-                    }
-                }
-
-                MainTab.Navigate -> {
-                    OverlayCard {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 100.dp) // Space for navbar
-                        ) {
-                            NavigationManager(
-                                viewModel = mainViewModel,
-                                permissionHandler = permissionHandler,
-                                onNavigateClick = onNavigateClick
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Floating Navbar
-        FloatingPillNavbar(
-            selectedTab = uiState.currentTab,
-            onTabSelected = mainViewModel::onTabSelected,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                )
-        )
-    }
+    HomePageContent(
+        uiState = uiState,
+        onStationClick = onStationClick,
+        onNavigateClick = onNavigateClick,
+        onFavoritesClick = onFavoritesClick,
+        onFromQueryChanged = homeViewModel::onFromQueryChanged,
+        onToQueryChanged = homeViewModel::onToQueryChanged,
+        onFromPlaceSelected = homeViewModel::onFromPlaceSelected,
+        onToPlaceSelected = homeViewModel::onToPlaceSelected,
+        onGetCurrentLocationClick = { permissionHandler.requestPermission() }
+    )
 }
 
 @Composable
-fun OverlayCard(
-    content: @Composable () -> Unit
+fun HomePageContent(
+    uiState: HomeUiState,
+    onStationClick: (String, String) -> Unit,
+    onNavigateClick: (String, String) -> Unit,
+    onFavoritesClick: () -> Unit,
+    onFromQueryChanged: (String) -> Unit,
+    onToQueryChanged: (String) -> Unit,
+    onFromPlaceSelected: (NominatimPlace) -> Unit,
+    onToPlaceSelected: (NominatimPlace) -> Unit,
+    onGetCurrentLocationClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(top = 100.dp), // Space for top actions/status bar
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.85f),
-            shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-            tonalElevation = 8.dp
+    Scaffold(
+        modifier = modifier,
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier.padding(
+                top = innerPadding.calculateTopPadding(),
+                start = innerPadding.calculateStartPadding(LocalLayoutDirection.current),
+                end = innerPadding.calculateEndPadding(LocalLayoutDirection.current)
+            )
         ) {
-            content()
+            LazyColumn {
+                item {
+                    PinnedStations(
+                        stations = uiState.pinnedStations,
+                        isLoading = uiState.isLoadingStations,
+                        onStationClick = onStationClick
+                    )
+                }
+                item {
+                    NavigationManagerContent(
+                        uiState = uiState,
+                        onFromQueryChanged = onFromQueryChanged,
+                        onToQueryChanged = onToQueryChanged,
+                        onFromPlaceSelected = onFromPlaceSelected,
+                        onToPlaceSelected = onToPlaceSelected,
+                        onGetCurrentLocationClick = onGetCurrentLocationClick,
+                        onNavigateClick = onNavigateClick
+                    )
+                }
+                item {
+                    FavoriteLocations(onFavoriteClick = onFavoritesClick)
+                }
+                item {
+                    Spacer(Modifier.height(100.dp)) // Space for navbar
+                }
+            }
         }
     }
 }
@@ -274,6 +267,12 @@ fun PinnedStations(
         }
         stations.forEach { stationData ->
             Card(
+                onClick = {
+                    onStationClick(
+                        stationData.name,
+                        stationData.name
+                    )
+                }, // Fixed onClick for Card
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
                     .fillMaxWidth()
@@ -299,22 +298,37 @@ fun PinnedStations(
                     ) {
                         items(stationData.departures) { departure ->
                             SuggestionChip(
-                                onClick = { onStationClick(stationData.name, stationData.name) },
+                                onClick = { },
+                                icon = {
+                                    val backgroundColor = departure.color?.let {
+                                        runCatching { Color("#$it".toColorInt()) }.getOrNull()
+                                    } ?: Color.Transparent
+
+                                    val textColor = departure.textColor?.let {
+                                        runCatching { Color("#$it".toColorInt()) }.getOrNull()
+                                    } ?: Color.Black
+
+                                    Box(
+                                        modifier = Modifier
+                                            .background(
+                                                backgroundColor,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .padding(horizontal = 4.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            color = textColor,
+                                            text = departure.displayName
+                                        )
+                                    }
+                                },
                                 label = {
                                     Text(
-                                        text = buildAnnotatedString {
-                                            append(departure.time)
-                                            if (departure.delay != null) {
-                                                withStyle(
-                                                    style = SpanStyle(
-                                                        baselineShift = BaselineShift.Superscript,
-                                                        color = departure.statusColor
-                                                    )
-                                                ) {
-                                                    append(departure.delay)
-                                                }
-                                            }
-                                        }
+                                        text = TimeUtils.formatDepartureTime(
+                                            departure.place.departure,
+                                            departure.place.scheduledDeparture,
+                                            departure.place.tz
+                                        )
                                     )
                                 },
                             )
@@ -328,38 +342,12 @@ fun PinnedStations(
 
 data class StationData(
     val name: String,
-    val departures: List<StationDemo>
+    val departures: List<StopTime>
 )
-
-data class StationDemo(
-    val time: String,
-    val delay: String?,
-    val statusColor: Color
-)
-
-@Composable
-fun NavigationManager(
-    viewModel: MainViewModel = hiltViewModel(),
-    permissionHandler: PermissionHandler,
-    onNavigateClick: (String, String) -> Unit = { _, _ -> }
-) {
-    val uiState by viewModel.uiState.collectAsState()
-
-    NavigationManagerContent(
-        uiState = uiState,
-        onFromQueryChanged = viewModel::onFromQueryChanged,
-        onToQueryChanged = viewModel::onToQueryChanged,
-        onFromPlaceSelected = viewModel::onFromPlaceSelected,
-        onToPlaceSelected = viewModel::onToPlaceSelected,
-        onGetCurrentLocationClick = { permissionHandler.requestPermission() },
-        onNavigateClick = onNavigateClick
-    )
-}
 
 @Composable
 fun NavigationManagerContent(
-    //TODO: Allow inputting long/lat manually
-    uiState: MainUiState,
+    uiState: HomeUiState,
     onFromQueryChanged: (String) -> Unit,
     onToQueryChanged: (String) -> Unit,
     onFromPlaceSelected: (NominatimPlace) -> Unit,
@@ -424,7 +412,7 @@ fun NavigationManagerContent(
 }
 
 @Composable
-fun LocationSearchField( //TODO: allow using https://api.transitous.org/api/v1/geocode as lookup
+fun LocationSearchField(
     label: String,
     query: String,
     results: List<NominatimPlace>,
@@ -472,10 +460,11 @@ fun LocationSearchField( //TODO: allow using https://api.transitous.org/api/v1/g
 fun FavoriteLocations(
     onFavoriteClick: () -> Unit = {}
 ) {
-    Column {
+    Column(modifier = Modifier.padding(16.dp)) {
         Text(stringResource(R.string.label_favorite_locations))
+        Spacer(Modifier.height(8.dp))
         LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val stations = listOf("Location1", "Location2", "Location3", "Location4", "Location5")
             stations.forEach { station ->

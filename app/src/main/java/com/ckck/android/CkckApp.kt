@@ -1,11 +1,16 @@
 package com.ckck.android
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import com.ckck.android.mainui.MainScreen
+import com.ckck.android.mainui.HomeScreen
+import com.ckck.android.models.HomeTab
 import com.ckck.android.navigation.Route
 import com.ckck.android.screens.FavoritesScreen
 import com.ckck.android.screens.SettingsScreen
@@ -15,13 +20,16 @@ import com.ckck.android.screens.TripDetailScreen
 @Composable
 fun CkckApp() {
     val navController = rememberNavController()
+    var currentTab by rememberSaveable { mutableStateOf(HomeTab.Home) }
 
     NavHost(
         navController = navController,
         startDestination = Route.Home
     ) {
         composable<Route.Home> {
-            MainScreen(
+            HomeScreen(
+                currentTab = currentTab,
+                onTabSelected = { currentTab = it },
                 onStationClick = { id, name ->
                     navController.navigate(Route.StationDetail(id, name))
                 },

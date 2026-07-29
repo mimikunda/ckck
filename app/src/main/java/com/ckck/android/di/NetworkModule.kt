@@ -1,6 +1,7 @@
 package com.ckck.android.di
 
 import com.ckck.android.api.NominatimService
+import com.ckck.android.api.TransitousService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -46,5 +47,21 @@ object NetworkModule {
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
             .create(NominatimService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTransitousService(okHttpClient: OkHttpClient): TransitousService {
+        val json = Json {
+            ignoreUnknownKeys = true
+            coerceInputValues = true
+        }
+        val contentType = "application/json".toMediaType()
+        return Retrofit.Builder()
+            .baseUrl("https://api.transitous.org/")
+            .client(okHttpClient)
+            .addConverterFactory(json.asConverterFactory(contentType))
+            .build()
+            .create(TransitousService::class.java)
     }
 }

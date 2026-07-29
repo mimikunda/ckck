@@ -15,8 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
+import com.ckck.android.viewmodels.HomeViewModel
 import com.ckck.android.viewmodels.LocationError
-import com.ckck.android.viewmodels.MainViewModel
 
 class PermissionHandler(
     private val context: Context,
@@ -43,7 +43,7 @@ class PermissionHandler(
 }
 
 @Composable
-fun rememberPermissionHandler(viewModel: MainViewModel): PermissionHandler {
+fun rememberPermissionHandler(viewModel: HomeViewModel): PermissionHandler {
     val context = LocalContext.current
 
     val launcher = rememberLauncherForActivityResult(
@@ -73,7 +73,7 @@ fun rememberPermissionHandler(viewModel: MainViewModel): PermissionHandler {
     }
 }
 
-private fun checkLocationAccessInternal(context: Context, viewModel: MainViewModel) {
+private fun checkLocationAccessInternal(context: Context, viewModel: HomeViewModel) {
     val locationManager = context.getSystemService(LOCATION_SERVICE) as LocationManager
     if (!locationManager.isLocationEnabled) {
         viewModel.showLocationError(LocationError.LocationDisabled)

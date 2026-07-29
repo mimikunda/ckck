@@ -8,8 +8,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ckck.android.api.NominatimPlace
 import com.ckck.android.api.NominatimService
+import com.ckck.android.api.TransitousService
+import com.ckck.android.mainui.StationData
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,7 +25,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds
 
-data class MainUiState(
+data class HomeUiState(
     val fromQuery: String = "",
     val toQuery: String = "",
     val fromResults: List<NominatimPlace> = emptyList(),
@@ -30,22 +34,26 @@ data class MainUiState(
     val toLocation: NominatimPlace? = null,
     val loadingCurrentLocation: Boolean = false,
     val canGetLocation: Boolean = true,
-    val permissionErrorMessage: String? = null,
-    val currentTab: MainTab = MainTab.Map
+    val locationError: LocationError? = null,
+    val pinnedStations: List<StationData> = emptyList(),
+    val isLoadingStations: Boolean = false
 )
 
-enum class MainTab {
-    Map, Stations, Navigate
+sealed class LocationError {
+    object MissingPermission : LocationError()
+    object PermanentlyDenied : LocationError()
+    object LocationDisabled : LocationError()
 }
 
 @OptIn(FlowPreview::class)
 @HiltViewModel
-class MainViewModel @Inject constructor(
+class HomeViewModel @Inject constructor(
     application: Application,
-    private val nominatimService: NominatimService
+    private val nominatimService: NominatimService,
+    private val transitousService: TransitousService
 ) : AndroidViewModel(application) {
-    private val _uiState = MutableStateFlow(MainUiState())
-    val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(HomeUiState())
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private val fromSearchFlow = MutableStateFlow("")
     private val toSearchFlow = MutableStateFlow("")
@@ -67,10 +75,44 @@ class MainViewModel @Inject constructor(
                     performSearch(query, isFrom = false)
                 }
         }
+        fetchPinnedStations()
+    }
+
+    private fun fetchPinnedStations() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingStations = true) }
+            val stationIds = listOf(
+                "si-lpp_295616c0-387b-4f60-a337-7743cd6be04e" to "Bavarski dvor",
+                "si-lpp_fef200e9-4d98-425b-ab14-8110e2aa85d7" to "Drama",
+                "si-lpp_5d1e404b-1606-457e-8d2b-4e3e80139532" to "Topniška"
+            )
+
+            try {
+                val results = stationIds.map { (id, name) ->
+                    async {
+                        try {
+                            val response = transitousService.getStopTimes(stopId = id, n = 8)
+                            StationData(
+                                name = response.place.name.takeIf { it.isNotEmpty() } ?: name,
+                                departures = response.stopTimes
+                            )
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            StationData(name, emptyList())
+                        }
+                    }
+                }.awaitAll()
+
+                _uiState.update { it.copy(pinnedStations = results, isLoadingStations = false) }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(isLoadingStations = false) }
+            }
+        }
     }
 
     fun onFromQueryChanged(query: String) {
-        _uiState.update { it.copy(fromQuery = query) }
+        _uiState.update { it.copy(fromQuery = query, fromLocation = null) }
         fromSearchFlow.value = query
         if (query.isEmpty()) {
             _uiState.update { it.copy(fromResults = emptyList()) }
@@ -78,7 +120,7 @@ class MainViewModel @Inject constructor(
     }
 
     fun onToQueryChanged(query: String) {
-        _uiState.update { it.copy(toQuery = query) }
+        _uiState.update { it.copy(toQuery = query, toLocation = null) }
         toSearchFlow.value = query
         if (query.isEmpty()) {
             _uiState.update { it.copy(toResults = emptyList()) }
@@ -146,15 +188,11 @@ class MainViewModel @Inject constructor(
     }
 
 
-    fun showMissingPermissionAlert(message: String) {
-        _uiState.update { it.copy(permissionErrorMessage = message) }
+    fun showLocationError(error: LocationError) {
+        _uiState.update { it.copy(locationError = error) }
     }
 
     fun clearPermissionAlert() {
-        _uiState.update { it.copy(permissionErrorMessage = null) }
-    }
-
-    fun onTabSelected(tab: MainTab) {
-        _uiState.update { it.copy(currentTab = tab) }
+        _uiState.update { it.copy(locationError = null) }
     }
 }
