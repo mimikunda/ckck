@@ -1,3 +1,25 @@
 <resources>
     <string name="app_name">ckck</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_enable">Enable</string>
+    <string name="action_settings">Settings</string>
+
+    <string name="permission_required_title">Permission Required</string>
+    <string name="permission_required_desc">Please enable location access to find nearby stations and navigate from your current position.</string>
+
+    <string name="permission_denied_title">Permission Denied</string>
+    <string name="permission_denied_desc">Location permission is permanently denied. Please enable it in app settings to use this feature.</string>
+
+    <string name="location_disabled_title">Location Disabled</string>
+    <string name="location_disabled_desc">System location services are disabled. Please enable them to continue.</string>
+
+    <string name="action_go">Go</string>
+    <string name="label_navigate">Navigate</string>
+    <string name="label_from">From</string>
+    <string name="label_to">To</string>
+    <string name="label_pinned_stations">Pinned Stations</string>
+    <string name="label_favorite_locations">Locations</string>
+    <string name="msg_no_departures">No upcoming departures</string>
+    <string name="desc_current_location">Current Location</string>
+    <string name="desc_settings">Settings</string>
 </resources>

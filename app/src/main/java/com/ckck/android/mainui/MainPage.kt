@@ -12,18 +12,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,7 +27,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -48,35 +43,33 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.ckck.android.BuildConfig
+import com.ckck.android.R
 import com.ckck.android.api.NominatimPlace
+import com.ckck.android.viewmodels.LocationError
 import com.ckck.android.viewmodels.MainTab
 import com.ckck.android.viewmodels.MainUiState
 import com.ckck.android.viewmodels.MainViewModel
@@ -101,21 +94,45 @@ fun MainScreen(
     val uiState by mainViewModel.uiState.collectAsState()
     val permissionHandler = rememberPermissionHandler(mainViewModel)
 
-    AlertDialogWrapper(
-        visible = uiState.permissionErrorMessage != null,
-        onDismiss = { mainViewModel.clearPermissionAlert() },
-        title = "Permission Required",
-        content = { Text("Please enable ${uiState.permissionErrorMessage} to continue.") },
-        actions = {
-            FilledTonalButton(
-                onClick = {
-                    mainViewModel.clearPermissionAlert()
-                }
-            ) {
-                Text("Dismiss")
-            }
+    uiState.locationError?.let { error ->
+        data class DialogConfig(
+            val title: String,
+            val text: String,
+            val confirmText: String,
+            val onConfirm: () -> Unit
+        )
+
+        val config = when (error) {
+            LocationError.MissingPermission -> DialogConfig(
+                stringResource(R.string.permission_required_title),
+                stringResource(R.string.permission_required_desc),
+                stringResource(R.string.action_enable),
+                { permissionHandler.requestPermission() }
+            )
+
+            LocationError.PermanentlyDenied -> DialogConfig(
+                stringResource(R.string.permission_denied_title),
+                stringResource(R.string.permission_denied_desc),
+                stringResource(R.string.action_settings),
+                { permissionHandler.openAppSettings() }
+            )
+
+            LocationError.LocationDisabled -> DialogConfig(
+                stringResource(R.string.location_disabled_title),
+                stringResource(R.string.location_disabled_desc),
+                stringResource(R.string.action_enable),
+                { permissionHandler.openLocationSettings() }
+            )
         }
-    )
+
+        CommonDialog(
+            onDismissRequest = { mainViewModel.clearPermissionAlert() },
+            title = config.title,
+            text = config.text,
+            confirmButtonText = config.confirmText,
+            onConfirm = config.onConfirm,
+        )
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         // Fullscreen Map Background
@@ -135,7 +152,10 @@ fun MainScreen(
                 tonalElevation = 4.dp
             ) {
                 IconButton(onClick = onSettingsClick) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    Icon(
+                        Icons.Filled.Settings,
+                        contentDescription = stringResource(R.string.desc_settings)
+                    )
                 }
             }
         }
@@ -163,7 +183,11 @@ fun MainScreen(
                             contentPadding = PaddingValues(bottom = 100.dp) // Space for navbar
                         ) {
                             item {
-                                PinnedStations(onStationClick = onStationClick)
+                                PinnedStations(
+                                    stations = uiState.pinnedStations,
+                                    isLoading = uiState.isLoadingStations,
+                                    onStationClick = onStationClick
+                                )
                             }
                             item {
                                 FavoriteLocations(onFavoriteClick = onFavoritesClick)
@@ -196,7 +220,9 @@ fun MainScreen(
             onTabSelected = mainViewModel::onTabSelected,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                .padding(
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                )
         )
     }
 }
@@ -226,59 +252,27 @@ fun OverlayCard(
 
 @Composable
 fun PinnedStations(
+    stations: List<StationData>,
+    isLoading: Boolean,
     onStationClick: (String, String) -> Unit = { _, _ -> }
 ) {
-    val demoStations = listOf(
-        StationData(
-            "Central Station",
-            listOf(
-                StationDemo("10:00", "+2", Color.Red),
-                StationDemo("10:15", null, Color.Green),
-                StationDemo("10:30", "+5", Color.Yellow),
-                StationDemo("10:45", "+1", Color.Yellow),
-                StationDemo("11:00", null, Color.Green),
-                StationDemo("11:15", "+10", Color.Red),
-                StationDemo("11:30", null, Color.Green),
-                StationDemo("11:45", "+3", Color.Yellow),
-            )
-        ),
-        StationData(
-            "North Gate",
-            listOf(
-                StationDemo("12:00", null, Color.Green),
-                StationDemo("12:10", "+1", Color.Yellow),
-                StationDemo("12:20", null, Color.Green),
-                StationDemo("12:30", "+15", Color.Red),
-                StationDemo("12:40", null, Color.Green),
-                StationDemo("12:50", "+2", Color.Yellow),
-                StationDemo("13:00", null, Color.Green),
-                StationDemo("13:10", null, Color.Green),
-            )
-        ),
-        StationData(
-            "West End",
-            listOf(
-                StationDemo("14:00", "+5", Color.Yellow),
-                StationDemo("14:15", null, Color.Green),
-                StationDemo("14:30", "+2", Color.Yellow),
-                StationDemo("14:45", null, Color.Green),
-                StationDemo("15:00", "+1", Color.Yellow),
-                StationDemo("15:15", null, Color.Green),
-                StationDemo("15:30", "+8", Color.Red),
-                StationDemo("15:45", null, Color.Green),
-            )
-        )
-    )
-
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.padding(vertical = 16.dp)
     ) {
-        Text(
-            text = "Pinned Stations",
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        demoStations.forEach { stationData ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = stringResource(R.string.label_pinned_stations))
+            if (isLoading) {
+                LoadingIndicator(modifier = Modifier.height(16.dp))
+            }
+        }
+        stations.forEach { stationData ->
             Card(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
@@ -293,6 +287,12 @@ fun PinnedStations(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         text = stationData.name
                     )
+                    if (stationData.departures.isEmpty() && !isLoading) {
+                        Text(
+                            text = stringResource(R.string.msg_no_departures),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp)
@@ -371,14 +371,14 @@ fun NavigationManagerContent(
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Navigate")
+        Text(stringResource(R.string.label_navigate))
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             LocationSearchField(
-                label = "From",
+                label = stringResource(R.string.label_from),
                 query = uiState.fromQuery,
                 results = uiState.fromResults,
                 onQueryChange = onFromQueryChanged,
@@ -397,14 +397,14 @@ fun NavigationManagerContent(
                 } else {
                     Icon(
                         imageVector = Icons.Filled.MyLocation,
-                        contentDescription = "Current Location"
+                        contentDescription = stringResource(R.string.desc_current_location)
                     )
                 }
             }
         }
 
         LocationSearchField(
-            label = "To",
+            label = stringResource(R.string.label_to),
             query = uiState.toQuery,
             results = uiState.toResults,
             onQueryChange = onToQueryChanged,
@@ -418,13 +418,13 @@ fun NavigationManagerContent(
             },
             modifier = Modifier.fillMaxWidth(),
             enabled = uiState.fromLocation != null && uiState.toLocation != null,
-            content = { Text("Go") }
+            content = { Text(stringResource(R.string.action_go)) }
         )
     }
 }
 
 @Composable
-fun LocationSearchField(
+fun LocationSearchField( //TODO: allow using https://api.transitous.org/api/v1/geocode as lookup
     label: String,
     query: String,
     results: List<NominatimPlace>,
@@ -473,7 +473,7 @@ fun FavoriteLocations(
     onFavoriteClick: () -> Unit = {}
 ) {
     Column {
-        Text("Locations")
+        Text(stringResource(R.string.label_favorite_locations))
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -512,31 +512,4 @@ fun Map(modifier: Modifier = Modifier) {
         styleState = styleState,
         options = MapOptions(ornamentOptions = OrnamentOptions.OnlyLogo),
     )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun MainPagePreview() {
-    Column {
-        PinnedStations()
-        NavigationManagerContent(
-            uiState = MainUiState(),
-            onFromQueryChanged = {},
-            onToQueryChanged = {},
-            onFromPlaceSelected = {},
-            onToPlaceSelected = {},
-            onGetCurrentLocationClick = {}
-        )
-        FavoriteLocations()
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun MapPreview() {
-    Card(
-        modifier = Modifier.height(300.dp)
-    ) {
-        Map()
-    }
 }
